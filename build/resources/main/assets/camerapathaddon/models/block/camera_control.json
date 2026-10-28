@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/cube_bottom_top",
+  "textures": {
+    "up": "camerapathaddon:block/camera_control_top",
+    "down": "camerapathaddon:block/camera_control_bottom",
+    "side": "camerapathaddon:block/camera_control_side",
+    "particle": "camerapathaddon:block/camera_control_side"
+  }
+}
