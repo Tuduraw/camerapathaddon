@@ -4,6 +4,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.codec.PacketCodecs;
+
+import java.util.List;
 
 /**
  * One point of a camera path.
@@ -14,12 +17,22 @@ import net.minecraft.network.codec.PacketCodec;
  * use for their own attitude quaternion - so a path drives a camera and a vehicle identically.
  *
  * @param tick  frame (game tick) at which this point is reached, counted from the start of the path
- * @param fov   field of view in degrees, or 0 to keep the player's own setting
+ * @param fov    field of view in degrees, or 0 to keep the player's own setting
+ * @param actions vehicle operations (parts, lights, weapons) done during vehicle playback - see {@link VehicleAction}; ignored by camera playback
  */
 public record Keyframe(int tick, double x, double y, double z, float rotX, float rotY, float rotZ, float fov,
-					   Interpolation interpolation) {
+					   Interpolation interpolation, List<VehicleAction> actions) {
 
 	public static final int MAX_TICK = 20 * 60 * 60 * 6;
+
+	public Keyframe {
+		actions = actions == null ? List.of() : List.copyOf(actions);
+	}
+
+	/** A keyframe without vehicle actions. */
+	public Keyframe(int tick, double x, double y, double z, float rotX, float rotY, float rotZ, float fov, Interpolation interpolation) {
+		this(tick, x, y, z, rotX, rotY, rotZ, fov, interpolation, List.of());
+	}
 
 	public static final Codec<Keyframe> CODEC = RecordCodecBuilder.create(instance -> instance.group(
 			Codec.INT.fieldOf("tick").forGetter(Keyframe::tick),
@@ -30,7 +43,8 @@ public record Keyframe(int tick, double x, double y, double z, float rotX, float
 			Codec.FLOAT.optionalFieldOf("rot_y", 0f).forGetter(Keyframe::rotY),
 			Codec.FLOAT.optionalFieldOf("rot_z", 0f).forGetter(Keyframe::rotZ),
 			Codec.FLOAT.optionalFieldOf("fov", 0f).forGetter(Keyframe::fov),
-			Interpolation.CODEC.optionalFieldOf("interpolation", Interpolation.BEZIER).forGetter(Keyframe::interpolation)
+			Interpolation.CODEC.optionalFieldOf("interpolation", Interpolation.BEZIER).forGetter(Keyframe::interpolation),
+			VehicleAction.CODEC.listOf().optionalFieldOf("actions", List.of()).forGetter(Keyframe::actions)
 	).apply(instance, Keyframe::new));
 
 	public static final PacketCodec<ByteBuf, Keyframe> PACKET_CODEC = new PacketCodec<>() {
@@ -38,7 +52,7 @@ public record Keyframe(int tick, double x, double y, double z, float rotX, float
 		public Keyframe decode(ByteBuf buf) {
 			return new Keyframe(buf.readInt(), buf.readDouble(), buf.readDouble(), buf.readDouble(),
 					buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(),
-					Interpolation.byOrdinal(buf.readByte())).sanitized();
+					Interpolation.byOrdinal(buf.readByte()), ACTIONS_PACKET_CODEC.decode(buf)).sanitized();
 		}
 
 		@Override
@@ -52,8 +66,12 @@ public record Keyframe(int tick, double x, double y, double z, float rotX, float
 			buf.writeFloat(key.rotZ);
 			buf.writeFloat(key.fov);
 			buf.writeByte(key.interpolation.ordinal());
+			ACTIONS_PACKET_CODEC.encode(buf, key.actions);
 		}
 	};
+
+	private static final PacketCodec<ByteBuf, List<VehicleAction>> ACTIONS_PACKET_CODEC =
+			VehicleAction.PACKET_CODEC.collect(PacketCodecs.toList(VehicleAction.MAX_PER_KEYFRAME));
 
 	/** Replaces anything non-finite or out of range - these values come from clients and end up saved on an item. */
 	public Keyframe sanitized() {
@@ -69,7 +87,7 @@ public record Keyframe(int tick, double x, double y, double z, float rotX, float
 			safeFov = 0f;
 		}
 		Interpolation safeInterpolation = this.interpolation != null ? this.interpolation : Interpolation.BEZIER;
-		return new Keyframe(safeTick, safeX, safeY, safeZ, safeRotX, safeRotY, safeRotZ, safeFov, safeInterpolation);
+		return new Keyframe(safeTick, safeX, safeY, safeZ, safeRotX, safeRotY, safeRotZ, safeFov, safeInterpolation, VehicleAction.sanitize(this.actions));
 	}
 
 	private static double finiteOr(double value, double fallback, double limit) {
@@ -80,14 +98,18 @@ public record Keyframe(int tick, double x, double y, double z, float rotX, float
 	}
 
 	public Keyframe withTick(int newTick) {
-		return new Keyframe(newTick, this.x, this.y, this.z, this.rotX, this.rotY, this.rotZ, this.fov, this.interpolation);
+		return new Keyframe(newTick, this.x, this.y, this.z, this.rotX, this.rotY, this.rotZ, this.fov, this.interpolation, this.actions);
 	}
 
 	public Keyframe withPosition(double newX, double newY, double newZ) {
-		return new Keyframe(this.tick, newX, newY, newZ, this.rotX, this.rotY, this.rotZ, this.fov, this.interpolation);
+		return new Keyframe(this.tick, newX, newY, newZ, this.rotX, this.rotY, this.rotZ, this.fov, this.interpolation, this.actions);
+	}
+
+	public Keyframe withActions(List<VehicleAction> newActions) {
+		return new Keyframe(this.tick, this.x, this.y, this.z, this.rotX, this.rotY, this.rotZ, this.fov, this.interpolation, newActions);
 	}
 
 	public Keyframe withRotation(float newRotX, float newRotY, float newRotZ) {
-		return new Keyframe(this.tick, this.x, this.y, this.z, newRotX, newRotY, newRotZ, this.fov, this.interpolation);
+		return new Keyframe(this.tick, this.x, this.y, this.z, newRotX, newRotY, newRotZ, this.fov, this.interpolation, this.actions);
 	}
 }

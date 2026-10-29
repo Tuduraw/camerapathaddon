@@ -20,7 +20,7 @@ import net.minecraft.util.StringIdentifiable;
  * @param preloadWhole    load every chunk along the whole path before starting, and keep them until the end
  * @param prioritizeAhead send the player the chunks ahead along the path first, instead of nearest-first
  * @param keySpacing      tick gap of a duplicated key
- * @param dummyPilot      seat a display-only dummy pilot in an empty pilot seat during vehicle playback
+ * @param dummyPilotSeats seats (bit n = seat n, bit 0 = the pilot seat) that get a display-only dummy pilot during vehicle playback when empty
  * @param dummyPilotSkin  skin id for that pilot ("" = default)
  * @param redstoneTrigger a rising redstone signal at the block starts vehicle playback
  */
@@ -28,10 +28,17 @@ public record PathSettings(RotationMode rotationMode, EndAction endAction, boole
 						   int chunkAhead, int chunkWidth, int chunkBehind,
 						   boolean waitForLoad, boolean preloadWhole, boolean prioritizeAhead,
 						   int keySpacing,
-						   boolean dummyPilot, String dummyPilotSkin, boolean redstoneTrigger) {
+						   int dummyPilotSeats, String dummyPilotSkin, boolean redstoneTrigger) {
 
 	public static final PathSettings DEFAULT = new PathSettings(RotationMode.EULER, EndAction.HOLD, false,
-			8, 2, 2, true, false, true, 40, false, "", false);
+			8, 2, 2, true, false, true, 40, 0, "", false);
+
+	/** Seats that can be given a dummy pilot in the settings (seat 0 = pilot ... 7). */
+	public static final int MAX_PILOT_SEATS = 8;
+
+	public boolean hasDummyPilot(int seat) {
+		return seat >= 0 && seat < MAX_PILOT_SEATS && (this.dummyPilotSeats & (1 << seat)) != 0;
+	}
 
 	public static final int MAX_CHUNK_AHEAD = 64;
 	public static final int MAX_CHUNK_WIDTH = 8;
@@ -49,7 +56,7 @@ public record PathSettings(RotationMode rotationMode, EndAction endAction, boole
 			Codec.BOOL.optionalFieldOf("preload_whole", DEFAULT.preloadWhole).forGetter(PathSettings::preloadWhole),
 			Codec.BOOL.optionalFieldOf("prioritize_ahead", DEFAULT.prioritizeAhead).forGetter(PathSettings::prioritizeAhead),
 			Codec.INT.optionalFieldOf("key_spacing", DEFAULT.keySpacing).forGetter(PathSettings::keySpacing),
-			Codec.BOOL.optionalFieldOf("dummy_pilot", DEFAULT.dummyPilot).forGetter(PathSettings::dummyPilot),
+			Codec.INT.optionalFieldOf("dummy_pilot_seats", DEFAULT.dummyPilotSeats).forGetter(PathSettings::dummyPilotSeats),
 			Codec.STRING.optionalFieldOf("dummy_pilot_skin", DEFAULT.dummyPilotSkin).forGetter(PathSettings::dummyPilotSkin),
 			Codec.BOOL.optionalFieldOf("redstone_trigger", DEFAULT.redstoneTrigger).forGetter(PathSettings::redstoneTrigger)
 	).apply(instance, PathSettings::new));
@@ -67,7 +74,7 @@ public record PathSettings(RotationMode rotationMode, EndAction endAction, boole
 			boolean preload = buf.readBoolean();
 			boolean prioritize = buf.readBoolean();
 			int keySpacing = buf.readVarInt();
-			boolean pilot = buf.readBoolean();
+			int pilot = buf.readVarInt();
 			String skin = buf.readString(64);
 			boolean redstone = buf.readBoolean();
 			return new PathSettings(rotationMode, endAction, loop, ahead, width, behind, wait, preload, prioritize,
@@ -86,7 +93,7 @@ public record PathSettings(RotationMode rotationMode, EndAction endAction, boole
 			buf.writeBoolean(s.preloadWhole);
 			buf.writeBoolean(s.prioritizeAhead);
 			buf.writeVarInt(s.keySpacing);
-			buf.writeBoolean(s.dummyPilot);
+			buf.writeVarInt(s.dummyPilotSeats);
 			buf.writeString(s.dummyPilotSkin.length() > 64 ? s.dummyPilotSkin.substring(0, 64) : s.dummyPilotSkin, 64);
 			buf.writeBoolean(s.redstoneTrigger);
 		}
@@ -102,7 +109,7 @@ public record PathSettings(RotationMode rotationMode, EndAction endAction, boole
 				clamp(this.chunkBehind, 0, MAX_CHUNK_BEHIND),
 				this.waitForLoad, this.preloadWhole, this.prioritizeAhead,
 				clamp(this.keySpacing, 1, MAX_INTERVAL),
-				this.dummyPilot,
+				this.dummyPilotSeats & ((1 << MAX_PILOT_SEATS) - 1),
 				this.dummyPilotSkin == null ? "" : (this.dummyPilotSkin.length() > 64 ? this.dummyPilotSkin.substring(0, 64) : this.dummyPilotSkin),
 				this.redstoneTrigger);
 	}

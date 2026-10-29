@@ -192,9 +192,10 @@ public class CameraControlScreen extends Screen {
 			this.updateLabels();
 		}).dimensions(x + 134, y, 82, 20).build());
 		y += 22;
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.apply"), b -> this.applyFields()).dimensions(x, y, 70, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.duplicate"), b -> this.duplicateSelected()).dimensions(x + 72, y, 72, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.delete"), b -> this.deleteSelected()).dimensions(x + 146, y, 70, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.apply"), b -> this.applyFields()).dimensions(x, y, 52, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.actions"), b -> this.openActions()).dimensions(x + 54, y, 52, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.duplicate"), b -> this.duplicateSelected()).dimensions(x + 108, y, 54, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.delete"), b -> this.deleteSelected()).dimensions(x + 164, y, 52, 20).build());
 		y += 22;
 		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.play_here"), b -> {
 			this.keepPlaybackOnClose = true;
@@ -247,8 +248,9 @@ public class CameraControlScreen extends Screen {
 		int y = fieldsTop + 4 * ROW + 1;
 		this.addDrawableChild(ButtonWidget.builder(Text.literal("<"), b -> this.select(this.selected - 1)).dimensions(x, y, 20, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.literal(">"), b -> this.select(this.selected + 1)).dimensions(x + 22, y, 20, 20).build());
-		this.interpolationButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.cycleInterpolation()).dimensions(x + 46, y, 110, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.apply"), b -> this.applyFields()).dimensions(x + 160, y, 78, 20).build());
+		this.interpolationButton = this.addDrawableChild(ButtonWidget.builder(Text.empty(), b -> this.cycleInterpolation()).dimensions(x + 46, y, 96, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.apply"), b -> this.applyFields()).dimensions(x + 144, y, 46, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.actions"), b -> this.openActions()).dimensions(x + 192, y, 48, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.duplicate"), b -> this.duplicateSelected())
 				.dimensions(x + 242, y, 80, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.camerapathaddon.delete"), b -> this.deleteSelected())
@@ -331,6 +333,13 @@ public class CameraControlScreen extends Screen {
 	/** Where the play buttons start: the selected key, or -1 (the first key). */
 	private int startTick() {
 		return this.startFromSelected ? this.selectedTickOr(-1) : -1;
+	}
+
+	/** The vehicle actions of the selected keyframe (parts, lights and weapons during vehicle playback). */
+	private void openActions() {
+		if (this.hasSelection()) {
+			this.client.setScreen(new VehicleActionScreen(this, this.pos, this::path, this.path().keys().get(this.selected).tick()));
+		}
 	}
 
 	private void duplicateSelected() {
@@ -479,14 +488,14 @@ public class CameraControlScreen extends Screen {
 		double step = STEPS[field][this.stepLevel] * direction;
 		Keyframe updated = switch (field) {
 			case 0 -> base.withTick(Math.max(0, base.tick() + (int) step));
-			case 1 -> new Keyframe(base.tick(), round(base.x() + step), base.y(), base.z(), base.rotX(), base.rotY(), base.rotZ(), base.fov(), base.interpolation());
-			case 2 -> new Keyframe(base.tick(), base.x(), round(base.y() + step), base.z(), base.rotX(), base.rotY(), base.rotZ(), base.fov(), base.interpolation());
-			case 3 -> new Keyframe(base.tick(), base.x(), base.y(), round(base.z() + step), base.rotX(), base.rotY(), base.rotZ(), base.fov(), base.interpolation());
-			case 4 -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), (float) round(base.rotX() + step), base.rotY(), base.rotZ(), base.fov(), base.interpolation());
-			case 5 -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), base.rotX(), (float) round(base.rotY() + step), base.rotZ(), base.fov(), base.interpolation());
-			case 6 -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), base.rotX(), base.rotY(), (float) round(base.rotZ() + step), base.fov(), base.interpolation());
+			case 1 -> new Keyframe(base.tick(), round(base.x() + step), base.y(), base.z(), base.rotX(), base.rotY(), base.rotZ(), base.fov(), base.interpolation(), base.actions());
+			case 2 -> new Keyframe(base.tick(), base.x(), round(base.y() + step), base.z(), base.rotX(), base.rotY(), base.rotZ(), base.fov(), base.interpolation(), base.actions());
+			case 3 -> new Keyframe(base.tick(), base.x(), base.y(), round(base.z() + step), base.rotX(), base.rotY(), base.rotZ(), base.fov(), base.interpolation(), base.actions());
+			case 4 -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), (float) round(base.rotX() + step), base.rotY(), base.rotZ(), base.fov(), base.interpolation(), base.actions());
+			case 5 -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), base.rotX(), (float) round(base.rotY() + step), base.rotZ(), base.fov(), base.interpolation(), base.actions());
+			case 6 -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), base.rotX(), base.rotY(), (float) round(base.rotZ() + step), base.fov(), base.interpolation(), base.actions());
 			default -> new Keyframe(base.tick(), base.x(), base.y(), base.z(), base.rotX(), base.rotY(), base.rotZ(),
-					(float) Math.max(0.0, round(base.fov() + step)), base.interpolation());
+					(float) Math.max(0.0, round(base.fov() + step)), base.interpolation(), base.actions());
 		};
 		this.pendingSelectTick = updated.tick();
 		this.dirty = false;
@@ -512,7 +521,7 @@ public class CameraControlScreen extends Screen {
 				tick != null ? Math.max(0, tick) : old.tick(),
 				x != null ? x : old.x(), y != null ? y : old.y(), z != null ? z : old.z(),
 				rx != null ? rx.floatValue() : old.rotX(), ry != null ? ry.floatValue() : old.rotY(), rz != null ? rz.floatValue() : old.rotZ(),
-				fov != null ? fov.floatValue() : old.fov(), old.interpolation());
+				fov != null ? fov.floatValue() : old.fov(), old.interpolation(), old.actions());
 		return updated;
 	}
 
@@ -523,7 +532,7 @@ public class CameraControlScreen extends Screen {
 		Keyframe old = this.path().keys().get(this.selected);
 		this.pendingSelectTick = old.tick();
 		ClientPlayNetworking.send(new Payloads.EditKey(this.pos, this.selected,
-				new Keyframe(old.tick(), old.x(), old.y(), old.z(), old.rotX(), old.rotY(), old.rotZ(), old.fov(), old.interpolation().next())));
+				new Keyframe(old.tick(), old.x(), old.y(), old.z(), old.rotX(), old.rotY(), old.rotZ(), old.fov(), old.interpolation().next(), old.actions())));
 	}
 
 	// ------------------------------------------------------------------ timeline
@@ -697,6 +706,10 @@ public class CameraControlScreen extends Screen {
 			int tick = i == this.dragKey ? this.dragTick : keys.get(i).tick();
 			int x = this.tickToX(tick);
 			context.fill(x - 1, this.barY + 1, x + 2, this.barY + BAR_H - 1, i == this.selected ? COLOR_MARK_SELECTED : COLOR_MARK);
+			if (!keys.get(i).actions().isEmpty()) {
+				// A key with vehicle actions: a yellow tick under its mark.
+				context.fill(x - 1, this.barY + BAR_H + 1, x + 2, this.barY + BAR_H + 3, 0xFFFFCC00);
+			}
 		}
 		if (this.dragKey >= 0) {
 			context.drawCenteredTextWithShadow(this.textRenderer, Text.literal(this.dragTick + "t"), this.tickToX(this.dragTick), this.barY + BAR_H + 2, COLOR_MARK_SELECTED);

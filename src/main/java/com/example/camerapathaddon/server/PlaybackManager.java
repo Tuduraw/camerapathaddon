@@ -3,6 +3,7 @@ package com.example.camerapathaddon.server;
 import com.example.camerapathaddon.block.CameraControlBlockEntity;
 import com.example.camerapathaddon.entity.CameraRigEntity;
 import com.example.camerapathaddon.network.Payloads;
+import com.example.camerapathaddon.path.ActionChannels;
 import com.example.camerapathaddon.path.CameraPath;
 import com.example.camerapathaddon.path.PathEvaluator;
 import com.example.camerapathaddon.path.PathSettings;
@@ -506,8 +507,10 @@ public final class PlaybackManager {
 		playback.running = !path.settings().waitForLoad() && !path.settings().preloadWhole();
 		VEHICLE.put(vehicle.getUuid(), playback);
 		vehicle.tudursvehiclemod$setExternalMotionController(playback);
-		if (path.settings().dummyPilot()) {
-			spawnDisplayPilot(world, vehicle, playback);
+		for (int seat = 0; seat < PathSettings.MAX_PILOT_SEATS; seat++) {
+			if (path.settings().hasDummyPilot(seat)) {
+				spawnDisplayPilot(world, vehicle, playback, seat);
+			}
 		}
 		if (starter != null && playback.preloader.isCapped()) {
 			starter.sendMessage(Text.translatable("message.camerapathaddon.chunk_cap", CameraPathServerConfig.get().maxLoadedChunksPerPlayback), false);
@@ -522,9 +525,9 @@ public final class PlaybackManager {
 		return null;
 	}
 
-	/** A display-only tudursvehiclemod dummy pilot in the empty pilot seat. Its combat weapon stays at the "none selected" default, so it never targets or fires at anything. */
-	private static void spawnDisplayPilot(ServerWorld world, AbstractVehicleEntity vehicle, VehiclePlayback playback) {
-		if (vehicle.tudursvehiclemod$getSeatOccupant(0) != null) {
+	/** A display-only tudursvehiclemod dummy pilot in seat (if the vehicle has it and it is empty). Its combat weapon stays at the "none selected" default, so it never targets or fires at anything; with one in a seat, that seat's turrets follow the path's aim for it. */
+	private static void spawnDisplayPilot(ServerWorld world, AbstractVehicleEntity vehicle, VehiclePlayback playback, int seat) {
+		if (seat >= vehicle.getDefinition().seats().size() || vehicle.tudursvehiclemod$getSeatOccupant(seat) != null) {
 			return;
 		}
 		DummyPilotEntity pilot = new DummyPilotEntity(com.example.tudursvehiclemod.registry.ModEntityTypes.DUMMY_PILOT, world);
@@ -539,12 +542,12 @@ public final class PlaybackManager {
 			DISPLAY_PILOTS.remove(pilot.getUuid());
 			return;
 		}
-		if (!vehicle.tudursvehiclemod$mountToSeat(pilot, 0)) {
+		if (!vehicle.tudursvehiclemod$mountToSeat(pilot, seat)) {
 			DISPLAY_PILOTS.remove(pilot.getUuid());
 			pilot.discard();
 			return;
 		}
-		playback.pilot = pilot;
+		playback.pilots.add(pilot);
 	}
 
 	private static void tickVehicle(MinecraftServer server, VehiclePlayback playback) {
@@ -598,6 +601,10 @@ public final class PlaybackManager {
 		}
 		double t = playback.currentPathTime();
 		playback.preloader.update(t);
+		if (playback.running) {
+			VehicleActionRunner.tick(vehicle, path, playback.lastActionTime, t, !playback.paused && !playback.finished);
+			playback.lastActionTime = t;
+		}
 		// Entity ticking where the vehicle is now and over the next few ticks, so it never steps into a chunk that doesn't tick it.
 		LongOpenHashSet simulation = new LongOpenHashSet();
 		simulation.add(ChunkPos.toLong(vehicle.getBlockX() >> 4, vehicle.getBlockZ() >> 4));
@@ -643,12 +650,12 @@ public final class PlaybackManager {
 				ServerPlayNetworking.send(rider, new Payloads.VehicleEnd(vehicle.getId()));
 			}
 		}
-		if (playback.pilot != null) {
-			DISPLAY_PILOTS.remove(playback.pilot.getUuid());
-			playback.pilot.stopRiding();
-			playback.pilot.discard();
-			playback.pilot = null;
+		for (DummyPilotEntity pilot : playback.pilots) {
+			DISPLAY_PILOTS.remove(pilot.getUuid());
+			pilot.stopRiding();
+			pilot.discard();
 		}
+		playback.pilots.clear();
 	}
 
 	/** Ends the playback of the vehicle with this UUID, if any. Returns whether there was one. */
@@ -785,7 +792,7 @@ public final class PlaybackManager {
 	}
 
 	/** One vehicle on a path. Also its ExternalMotionController (server side). */
-	public static final class VehiclePlayback implements AbstractVehicleEntity.ExternalMotionController {
+	public static final class VehiclePlayback implements AbstractVehicleEntity.ExternalMotionController, ActionChannels.Source {
 		final UUID vehicleId;
 		final ServerWorld world;
 		AbstractVehicleEntity vehicle;
@@ -800,7 +807,9 @@ public final class PlaybackManager {
 		boolean paused;
 		int prepareTicks;
 		int missingTicks;
-		DummyPilotEntity pilot;
+		/** Path time at which vehicle actions were last run (NaN = not yet) - see VehicleActionRunner. */
+		double lastActionTime = Double.NaN;
+		final List<DummyPilotEntity> pilots = new ArrayList<>();
 		ChunkPos aheadChunk;
 
 		VehiclePlayback(UUID vehicleId, ServerWorld world, AbstractVehicleEntity vehicle, CameraPath path, PathEvaluator evaluator, UUID starterId, GlobalPos source) {
@@ -815,6 +824,20 @@ public final class PlaybackManager {
 
 		double currentPathTime() {
 			return this.path.pathTime(this.elapsed);
+		}
+
+		private double channelsTime = Double.NaN;
+		private ActionChannels channels = ActionChannels.NONE;
+
+		/** Throttle, steering and aim from the path at the current time (the server works in whole ticks). */
+		@Override
+		public ActionChannels camerapathaddon$channels(float tickProgress) {
+			double t = this.currentPathTime();
+			if (t != this.channelsTime) {
+				this.channelsTime = t;
+				this.channels = ActionChannels.at(this.path, t);
+			}
+			return this.channels;
 		}
 
 		Payloads.Clock clock() {

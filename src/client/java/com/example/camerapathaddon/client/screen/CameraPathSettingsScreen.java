@@ -30,7 +30,8 @@ public class CameraPathSettingsScreen extends Screen {
 	private boolean waitForLoad;
 	private boolean preloadWhole;
 	private boolean prioritizeAhead;
-	private boolean dummyPilot;
+	/** Seats with a dummy pilot (bit n = seat n). */
+	private int dummyPilotSeats;
 	private boolean redstoneTrigger;
 	private String skin;
 	private final List<String> skins = new ArrayList<>();
@@ -67,7 +68,7 @@ public class CameraPathSettingsScreen extends Screen {
 		this.waitForLoad = s.waitForLoad();
 		this.preloadWhole = s.preloadWhole();
 		this.prioritizeAhead = s.prioritizeAhead();
-		this.dummyPilot = s.dummyPilot();
+		this.dummyPilotSeats = s.dummyPilotSeats();
 		this.redstoneTrigger = s.redstoneTrigger();
 		this.skin = s.dummyPilotSkin();
 		this.skins.clear();
@@ -99,7 +100,21 @@ public class CameraPathSettingsScreen extends Screen {
 				this.endAction = this.endAction == PathSettings.EndAction.HOLD ? PathSettings.EndAction.RELEASE : PathSettings.EndAction.HOLD);
 		this.toggle(left, base + 42, () -> onOff("gui.camerapathaddon.loop", this.loop), () -> this.loop = !this.loop);
 		this.toggle(left, base + 63, () -> onOff("gui.camerapathaddon.redstone_trigger", this.redstoneTrigger), () -> this.redstoneTrigger = !this.redstoneTrigger);
-		this.toggle(left, base + 84, () -> onOff("gui.camerapathaddon.dummy_pilot", this.dummyPilot), () -> this.dummyPilot = !this.dummyPilot);
+		// Dummy pilots: one toggle per seat (P = pilot seat, then 2..8).
+		ButtonWidget pilotLabel = ButtonWidget.builder(Text.translatable("gui.camerapathaddon.dummy_pilot_seats"), b -> {
+		}).dimensions(left, base + 84, 64, 20).build();
+		pilotLabel.active = false;
+		this.addDrawableChild(pilotLabel);
+		for (int seat = 0; seat < PathSettings.MAX_PILOT_SEATS; seat++) {
+			int bit = 1 << seat;
+			String name = seat == 0 ? "P" : Integer.toString(seat + 1);
+			ButtonWidget seatButton = ButtonWidget.builder(Text.empty(), b -> {
+				this.dummyPilotSeats ^= bit;
+				this.labelUpdaters.forEach(Runnable::run);
+			}).dimensions(left + 66 + seat * 17, base + 84, 16, 20).build();
+			this.labelUpdaters.add(() -> seatButton.setMessage(Text.literal(name).withColor((this.dummyPilotSeats & bit) != 0 ? 0xFF55FF55 : 0xFF707070)));
+			this.addDrawableChild(seatButton);
+		}
 		this.toggle(left, base + 105, () -> Text.translatable("gui.camerapathaddon.dummy_pilot_skin",
 				this.skin.isEmpty() ? Text.translatable("gui.camerapathaddon.default") : Text.literal(this.skin)), () -> {
 			int index = Math.max(0, this.skins.indexOf(this.skin));
@@ -133,6 +148,7 @@ public class CameraPathSettingsScreen extends Screen {
 		}).dimensions(cx - 100, bottom, 98, 20).build());
 		this.addDrawableChild(ButtonWidget.builder(Text.translatable("gui.cancel"), b -> this.client.setScreen(this.parent))
 				.dimensions(cx + 2, bottom, 98, 20).build());
+		this.labelUpdaters.forEach(Runnable::run);
 	}
 
 	private void toggle(int x, int y, Supplier<Text> label, Runnable action) {
@@ -168,7 +184,7 @@ public class CameraPathSettingsScreen extends Screen {
 				intOf(this.aheadField, old.chunkAhead()), intOf(this.widthField, old.chunkWidth()), intOf(this.behindField, old.chunkBehind()),
 				this.waitForLoad, this.preloadWhole, this.prioritizeAhead,
 				intOf(this.keySpacingField, old.keySpacing()),
-				this.dummyPilot, this.skin, this.redstoneTrigger).sanitized();
+				this.dummyPilotSeats, this.skin, this.redstoneTrigger).sanitized();
 		ClientPlayNetworking.send(new Payloads.EditSettings(this.pos, settings, this.nameField.getText()));
 	}
 

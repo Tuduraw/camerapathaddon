@@ -1,6 +1,7 @@
 package com.example.camerapathaddon.client;
 
 import com.example.camerapathaddon.network.Payloads;
+import com.example.camerapathaddon.path.ActionChannels;
 import com.example.camerapathaddon.path.CameraPath;
 import com.example.camerapathaddon.path.PathEvaluator;
 import com.example.tudursvehiclemod.entity.AbstractVehicleEntity;
@@ -220,7 +221,7 @@ public final class ClientPlaybackState {
 	}
 
 	/** One vehicle on a path, and its client-side ExternalMotionController. */
-	static final class VehiclePlayback extends Clocked implements AbstractVehicleEntity.ExternalMotionController {
+	static final class VehiclePlayback extends Clocked implements AbstractVehicleEntity.ExternalMotionController, ActionChannels.Source {
 		final int entityId;
 		AbstractVehicleEntity installedOn;
 		int missingTicks;
@@ -228,6 +229,20 @@ public final class ClientPlaybackState {
 		VehiclePlayback(int entityId, CameraPath path, PathEvaluator evaluator, int elapsed, boolean running) {
 			super(path, evaluator, elapsed, running);
 			this.entityId = entityId;
+		}
+
+		private double channelsTime = Double.NaN;
+		private ActionChannels channels = ActionChannels.NONE;
+
+		/** Throttle, steering and aim from the path at this frame (sub-tick, so turrets and wheels move smoothly). */
+		@Override
+		public ActionChannels camerapathaddon$channels(float tickProgress) {
+			double t = this.frameTime(tickProgress);
+			if (t != this.channelsTime) {
+				this.channelsTime = t;
+				this.channels = ActionChannels.at(this.path, t);
+			}
+			return this.channels;
 		}
 
 		void install(AbstractVehicleEntity vehicle) {

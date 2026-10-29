@@ -5,7 +5,11 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "PlayerManagerLogoutMixin",
-    "ChunkDataSenderMixin"
+    "ChunkDataSenderMixin",
+    "VehicleChannelMixin",
+    "AircraftSpinMixin",
+    "HelicopterSpinMixin",
+    "VtolSpinMixin"
   ],
   "injectors": {
     "defaultRequire": 1
